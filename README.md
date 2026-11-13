@@ -1,4 +1,3 @@
-[lengkapi-sop-README.md](https://github.com/user-attachments/files/34779930/lengkapi-sop-README.md)
 # Lengkapi SOP
 
 Aplikasi latihan SOP interaktif dengan dua bagian yang terpisah:
