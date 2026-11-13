@@ -17,20 +17,28 @@
   const view = { q: { search: '', topic: '', type: '', status: '', page: 1, per: 10 }, h: { outlet: '' } };
   let route = 'ringkasan';
 
-  /* ---------------- kunci PIN ---------------- */
+  /* ---------------- login ---------------- */
   function boot() {
-    if (S.hasPin() && sessionStorage.getItem('lsop.unlocked') !== '1') { renderLock(); return; }
-    $('lock').classList.add('hidden'); $('lock').classList.remove('flex');
-    start();
+    if (window.Auth.isLoggedIn()) { $('lock').classList.add('hidden'); $('lock').classList.remove('flex'); start(); return; }
+    renderLock();
   }
   function renderLock() {
     const el = $('lock'); el.classList.remove('hidden'); el.classList.add('flex');
-    el.innerHTML = '<form id="lock-form" class="card w-full max-w-sm text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">' + icon('lock', 'h-6 w-6') + '</div><h1 class="mt-3 text-lg font-semibold text-slate-900">Dashboard Trainer</h1><p class="mt-1 text-sm text-slate-500">Masukkan PIN untuk melanjutkan.</p><input id="lock-pin" type="password" inputmode="numeric" autocomplete="off" class="input mt-4 text-center tracking-widest" aria-label="PIN"><p id="lock-err" class="mt-2 hidden text-sm text-rose-600">PIN salah.</p><button class="btn btn-primary mt-4 w-full" type="submit">Masuk</button></form>';
-    $('lock-pin').focus();
-    $('lock-form').addEventListener('submit', e => {
+    const ok = window.Auth.configured() && window.crypto && crypto.subtle;
+    el.innerHTML = '<form id="lock-form" class="card w-full max-w-sm text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">' + icon('lock', 'h-6 w-6') + '</div><h1 class="mt-3 text-lg font-semibold text-slate-900">Dashboard Trainer</h1>' +
+      (ok ? '<p class="mt-1 text-sm text-slate-500">Masukkan password untuk melanjutkan.</p><input id="lock-pw" type="password" autocomplete="current-password" class="input mt-4 text-center" aria-label="Password"><p id="lock-err" class="mt-2 hidden text-sm text-rose-600" role="alert"></p><button id="lock-btn" class="btn btn-primary mt-4 w-full" type="submit">Masuk</button>'
+          : '<p class="mt-3 text-sm text-rose-600">Password dashboard belum diatur (atau halaman tidak dibuka lewat https). Buat password dengan <code>buat-password.html</code>, isi <code>js/auth-config.js</code>, lalu unggah ulang.</p>') + '</form>';
+    if (!ok) return;
+    $('lock-pw').focus();
+    $('lock-form').addEventListener('submit', async e => {
       e.preventDefault();
-      if (S.checkPin($('lock-pin').value)) { sessionStorage.setItem('lsop.unlocked', '1'); boot(); }
-      else { $('lock-err').classList.remove('hidden'); $('lock-pin').value = ''; $('lock-pin').focus(); }
+      const err = $('lock-err'), btn = $('lock-btn'); btn.disabled = true;
+      const r = await window.Auth.login($('lock-pw').value);
+      btn.disabled = false;
+      if (r.ok) { boot(); return; }
+      err.classList.remove('hidden');
+      err.textContent = r.reason === 'wait' ? 'Terlalu banyak percobaan. Coba lagi dalam ' + r.wait + ' detik.' : r.reason === 'config' ? 'Login tidak dapat diproses di browser ini.' : 'Password salah.' + (r.left ? ' Sisa percobaan: ' + r.left + '.' : ' Tunggu sebentar sebelum mencoba lagi.');
+      $('lock-pw').value = ''; $('lock-pw').focus();
     });
   }
 
@@ -136,8 +144,6 @@
       '<div><label class="label" for="s-outlets">Daftar outlet (satu per baris)</label><textarea id="s-outlets" rows="5" class="input">' + esc(s.outlets.join('\n')) + '</textarea></div>' +
       '<div class="grid gap-4 sm:grid-cols-2"><div><label class="label" for="s-count">Jumlah soal bawaan</label><input id="s-count" type="number" min="3" max="50" class="input" value="' + s.quizCount + '"></div><div><label class="label" for="s-pass">Nilai lulus (%)</label><input id="s-pass" type="number" min="1" max="100" class="input" value="' + s.passScore + '"></div></div>' +
       '<div class="flex justify-end"><button class="btn btn-primary" type="submit">Simpan pengaturan</button></div></form>' +
-      '<div class="card space-y-3"><h2 class="text-base font-semibold text-slate-900">PIN dashboard</h2><p class="text-sm text-slate-500">Kunci ringan agar dashboard tidak terbuka sembarangan di browser ini. PIN tidak menggantikan keamanan sungguhan: simpan <code>admin.html</code> hanya di perangkat trainer.</p>' +
-      '<div class="flex flex-wrap items-end gap-3"><div><label class="label" for="s-pin">' + (S.hasPin() ? 'Ganti PIN' : 'Buat PIN') + ' (4-8 angka)</label><input id="s-pin" type="password" inputmode="numeric" maxlength="8" class="input w-44" autocomplete="off"></div><button data-act="setpin" class="btn btn-secondary">Simpan PIN</button>' + (S.hasPin() ? '<button data-act="clearpin" class="btn btn-ghost text-rose-600">Hapus PIN</button>' : '') + '</div></div>' +
       '<div class="card space-y-3"><h2 class="text-base font-semibold text-slate-900">Data pertanyaan</h2><p class="text-sm text-slate-500">Versi v' + info.version + ' · ' + info.count + ' pertanyaan · diperbarui ' + UI.fmtDate(info.updatedAt) + '. Data tersimpan di browser ini. Untuk membagikannya ke perangkat crew, unduh <code>questions.json</code> lalu letakkan di folder <code>data/</code> pada hosting.</p>' +
       '<div class="flex flex-wrap gap-2"><button data-act="export" class="btn btn-secondary">' + icon('download', 'h-4 w-4') + 'Unduh questions.json</button><label class="btn btn-secondary cursor-pointer">' + icon('upload', 'h-4 w-4') + 'Impor JSON<input id="imp-file" type="file" accept="application/json,.json" class="sr-only"></label>' +
       '<label class="flex items-center gap-2 text-sm text-slate-600"><input type="radio" name="imp-mode" value="merge" checked> Gabungkan</label><label class="flex items-center gap-2 text-sm text-slate-600"><input type="radio" name="imp-mode" value="replace"> Ganti semua</label></div>' +
@@ -264,12 +270,7 @@
       case 'csv': exportCsv(); break;
       case 'clearhist': confirmBox('Hapus semua riwayat?', 'Riwayat kuis di browser ini akan dihapus permanen.', 'Ya, hapus', true, () => { S.clearHistory(); render(); }); break;
       case 'hdetail': showHistoryDetail(id); break;
-      case 'setpin': {
-        const p = $('s-pin').value.trim();
-        if (!/^\d{4,8}$/.test(p)) { UI.toast('PIN harus 4-8 angka.', 'err'); break; }
-        S.setPin(p); sessionStorage.setItem('lsop.unlocked', '1'); UI.toast('PIN disimpan.'); render(); break;
-      }
-      case 'clearpin': S.clearPin(); sessionStorage.removeItem('lsop.unlocked'); UI.toast('PIN dihapus.'); render(); break;
+      case 'logout': window.Auth.logout(); location.hash = ''; location.reload(); break;
       case 'reset': confirmBox('Kembalikan ke data awal?', 'Semua pertanyaan yang kamu tambah atau ubah akan diganti dengan data awal. Unduh cadangan dulu bila perlu.', 'Ya, kembalikan', true, () => { S.resetBank(); UI.toast('Data dikembalikan ke awal.'); render(); }); break;
     }
   });
